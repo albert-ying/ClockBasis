@@ -93,7 +93,7 @@ do_dnam_clock_mouse = function(
   map_dfr(2:ncol(data), ~{
     sample_name = colnames(data)[.x]
     message(paste0("Processing ", sample_name))
-    me_mat = cbind(me_mat[,1], me_mat[,.x])
+    me_mat = cbind(data[,1], data[,.x])
     colnames(me_mat) = c("CpG", "level")
     res.ls = list()
     for (i in 1:length(clock.ls)) {
