@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-#' Calculation function for mouse DNAm age
+#' Load mouse clock internal objects
 #' @importFrom readr read_tsv
 #' @importFrom purrr map
 #' @importFrom dplyr arrange
@@ -29,14 +29,14 @@
     arrange(.x, CpG)
   })
 
-  clock_intercept.ls = list(
+  mouse_clock_intercept.ls = list(
     Meer_intercept,
     Petkovich_intercept,
     Thompson_intercept,
     Wang_intercept
   )
 
-  names(mouse_clock.ls) = c(
+  names(mouse_clock.ls) = names(mouse_clock_intercept.ls) = c(
     "MeerClock",
     "PetkovichClock",
     "ThompsonClock",
@@ -62,12 +62,96 @@
 
 #-----------------------------------------------------------------------------
 #' Calculation function for mouse DNAm age
-
+#' @importFrom dplyr left_join select, extract, pull, arrange, group_by, summarize, mutate, bind_rows, ungroup, bind_cols
+#' @importFrom fuzzyjoin genome_left_join
 #' @export
 #-----------------------------------------------------------------------------
 
-do_dnam_clock_mouse = function(data, ...) {
-  return(mouse_imputer.ls)
+do_dnam_clock_mouse = function(
+  data,
+  clock = c("MeerClock", "PetkovichClock", "ThompsonClock", "WangLiver"),
+  fuzzy_pos_window = 100
+) {
+  require(dplyr)
+  require(fuzzyjoin)
+
+  colnames(data)[1] = "CpG"
+  if (max(pull(data[,2]), na.rm = T) <= 1) {
+    message("The data is at 0-1 scale, transforming it to 0-100 scale")
+    data = data |>
+      mutate_if(is.numeric, \(x){x * 100})
+  }
+  me_mat = data
+  clock.ls = mouse_clock.ls[clock]
+  clock_intercept.ls = mouse_clock_intercept.ls[clock]
+  imputer.ls = mouse_imputer.ls[clock]
+  res.ls = list()
+  for (i in 1:length(clock.ls)) {
+    print(i)
+    clock = clock.ls[[i]]
+    clock_name = names(clock.ls)[i]
+    ## first match
+    raw = clock |>
+      select(CpG) |>
+      left_join(me_mat, by = "CpG") 
+    missed = raw[is.na(raw$level),]
+    ## Fuzzy match + - 100 bp
+    missed_pos = missed |>
+      extract(CpG, c("chr", "tar_bp"), '(chr.*)_(.*)', remove = F, convert = T) |>
+      select(-level) |>
+      mutate(start = tar_bp - fuzzy_pos_window, end = tar_bp + fuzzy_pos_window)
+    me_mat2 = me_mat |>
+      extract(CpG, c("chr", "bp"), '(chr.*)_(.*)', remove = T, convert = T) |>
+      mutate(start = bp, end = bp)
+    fuzzy_joined = genome_left_join(missed_pos, me_mat2, by = c("chr", 'start', 'end'))
+
+    mean_fuzzy = fuzzy_joined |>
+      select(CpG, level) |> 
+      group_by(CpG) |>
+      summarize(level = mean(level, na.rm = T)) |>
+      ungroup() 
+  
+    raw_mat = raw[!is.na(raw$level),] |>
+      bind_rows(mean_fuzzy) |>
+      arrange(CpG) |>
+      select(-CpG) |>
+      as.matrix()
+
+    missingness = apply(raw_mat, 2, function(x) mean(is.na(x)))
+
+    if (any(missingness > 0)) { ## impute missingness
+      # Impute missing values
+      imputer = imputer.ls[[i]]
+      k = which(is.na(raw_mat), arr.ind = T)
+      raw_mat[k] = imputer[k[,1]]
+    }
+    # Calc meAge
+    clock_coef = clock$Weight
+    # make table
+    if (clock_name == 'MeerClock') {
+      bage = (matrix(clock_coef, nrow = 1) %*% raw_mat) + clock_intercept.ls[[i]]
+      bage = bage/30.417
+    } else if (clock_name == 'PetkovichClock') {
+      a = 0.1666
+      b = 0.4185 
+      c = -1.712
+      bage = (matrix(clock_coef, nrow = 1) %*% raw_mat/100) + clock_intercept.ls[[i]]
+      bage = ((((bage - c)/a)**(1/b))/30.417)
+
+    } else if (clock_name == 'ThompsonClock') {
+      bage = (matrix(clock_coef, nrow = 1) %*% raw_mat/100) + clock_intercept.ls[[i]]
+    } else if (clock_name == 'WangLiver') {
+      bage = (matrix(clock_coef, nrow = 1) %*% raw_mat/100) + clock_intercept.ls[[i]]
+      bage = (2**(bage))/30.417
+    }
+    res = data.frame(Age = bage[1,], missing = missingness)
+    colnames(res) = c(clock_name, paste0(clock_name, "_missing"))
+    res.ls[[i]] = res
+  }
+  res_mat = bind_cols(res.ls) |>
+    as.data.frame() |>
+    rownames_to_column("sample_id")
+  return(res_mat)
 }
 
 #-----------------------------------------------------------------------------
@@ -87,7 +171,8 @@ do_dnam_clock_mouse = function(data, ...) {
 # debug
 #-----------------------------------------------------------------------------
 if (FALSE) {
-  # remotes::install_github("albert-ying/ClockBasis") 
-  # library(ClockBasis)
+  remotes::install_github("albert-ying/ClockBasis") 
+  library(ClockBasis)
+  
 
 }
