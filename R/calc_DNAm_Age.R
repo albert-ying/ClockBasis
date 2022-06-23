@@ -62,7 +62,8 @@
 
 #-----------------------------------------------------------------------------
 #' Calculation function for mouse DNAm age
-#' @importFrom dplyr left_join select, extract, pull, arrange, group_by, summarize, mutate, bind_rows, ungroup, bind_cols
+#' @importFrom dplyr left_join select pull arrange group_by summarize mutate bind_rows ungroup bind_cols
+#' @importFrom tidyr extract
 #' @importFrom fuzzyjoin genome_left_join
 #' @export
 #-----------------------------------------------------------------------------
@@ -74,6 +75,7 @@ do_dnam_clock_mouse = function(
 ) {
   require(dplyr)
   require(fuzzyjoin)
+  require(tidyr)
 
   colnames(data)[1] = "CpG"
   if (max(pull(data[,2]), na.rm = T) <= 1) {
