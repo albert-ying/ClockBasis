@@ -105,7 +105,29 @@ do_dnam_clock_mouse = function(
         select(CpG) |>
         left_join(me_mat, by = "CpG") 
       missed = raw[is.na(raw$level),]
-      ## Fuzzy match + - 100 bp
+      ## 1st fuzzy match + - 3 bp
+      missed_pos = missed |>
+        extract(CpG, c("chr", "tar_bp"), '(chr.*)_(.*)', remove = F, convert = T) |>
+        select(-level) |>
+        mutate(start = tar_bp - 3, end = tar_bp + 3)
+      me_mat2 = me_mat |>
+        extract(CpG, c("chr", "bp"), '(chr.*)_(.*)', remove = T, convert = T) |>
+        mutate(start = bp, end = bp)
+      fuzzy_joined = genome_left_join(missed_pos, me_mat2, by = c("chr", 'start', 'end'))
+
+      mean_fuzzy = fuzzy_joined |>
+        select(CpG, level) |> 
+        group_by(CpG) |>
+        summarize(level = mean(level, na.rm = T)) |>
+        ungroup() 
+    
+      raw = raw[!is.na(raw$level),] |>
+        bind_rows(mean_fuzzy) |>
+        arrange(CpG)
+
+      missed = raw[is.na(raw$level),]
+
+      ## 2nd fuzzy match + - 100 bp
       missed_pos = missed |>
         extract(CpG, c("chr", "tar_bp"), '(chr.*)_(.*)', remove = F, convert = T) |>
         select(-level) |>
@@ -186,7 +208,5 @@ if (FALSE) {
   remotes::install_github("albert-ying/ClockBasis") 
   library(ClockBasis)
   library(tidyverse)
-  do_dnam_clock_mouse(tibble(a = "chr1_1", level = 0.5))
-  
-
+  do_dnam_clock_mouse(tibble(a = "chr1_1", lel = 0.5, kkk = 1))
 }
