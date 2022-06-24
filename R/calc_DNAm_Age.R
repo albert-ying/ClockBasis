@@ -62,11 +62,18 @@
 
 #-----------------------------------------------------------------------------
 #' Calculation function for mouse DNAm age
+#'
+#' @param data A dataframe with the chr_pos id as first column. The rest of the columns should be methylation levels for each sample, with sample names as column names.
+#' @param clock A string vector with the names of the clocks to use.
+#' @param fuzzy_pos_window A interger indicating a window size that to be used to infer missing methylation value. Default is 100.
 #' @importFrom dplyr left_join select pull arrange group_by summarize mutate bind_rows ungroup bind_cols
 #' @importFrom tidyr extract
 #' @importFrom tibble rownames_to_column
 #' @importFrom purrr map_dfr
 #' @importFrom fuzzyjoin genome_left_join
+#' @return An tibble with sample per row and DNAm age as columns.
+#' @examples
+#' do_dnam_clock_mouse(df, c("MeerClock", "PetkovichClock", "ThompsonClock", "WangLiver"), 100)
 #' @export
 #-----------------------------------------------------------------------------
 
@@ -208,5 +215,5 @@ if (FALSE) {
   remotes::install_github("albert-ying/ClockBasis") 
   library(ClockBasis)
   library(tidyverse)
-  do_dnam_clock_mouse(tibble(a = "chr1_1", lel = 0.5, kkk = 1))
+  do_dnam_clock_mouse(tibble(a = "chr1_1000", lel = 0.5, kkk = 1))
 }
