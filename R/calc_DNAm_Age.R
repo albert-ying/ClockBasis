@@ -1,10 +1,3 @@
-#-----------------------------------------------------------------------------
-#' Load mouse clock internal objects
-#' @importFrom readr read_tsv
-#' @importFrom purrr map
-#' @importFrom dplyr arrange
-#-----------------------------------------------------------------------------
-
 {
   require(readr)
   require(purrr)
@@ -87,7 +80,7 @@ do_dnam_clock_mouse = function(
   require(tidyr)
   require(tibble)
   require(purrr)
-
+  # data = read_csv('./data/sample_data.csv')
   colnames(data)[1] = "CpG"
   if (max(pull(data[,2]), na.rm = T) <= 1) {
     message("The data is at 0-1 scale, transforming it to 0-100 scale")
@@ -102,30 +95,31 @@ do_dnam_clock_mouse = function(
     message(paste0("Processing ", sample_name))
     me_mat = cbind(data[,1], data[,.x])
     colnames(me_mat) = c("CpG", "level")
+    me_mat2 = me_mat |>
+      extract(CpG, c("chr", "bp"), '(chr.*)_(.*)', remove = T, convert = T) |>
+      mutate(start = bp, end = bp)
     res.ls = list()
     for (i in 1:length(clock.ls)) {
-      print(i)
       clock = clock.ls[[i]]
       clock_name = names(clock.ls)[i]
+      message(clock_name)
       ## first match
       raw = clock |>
         select(CpG) |>
         left_join(me_mat, by = "CpG") 
       missed = raw[is.na(raw$level),]
-      ## 1st fuzzy match + - 3 bp
+
+      # ## 1st fuzzy match + - 3 bp
       missed_pos = missed |>
         extract(CpG, c("chr", "tar_bp"), '(chr.*)_(.*)', remove = F, convert = T) |>
         select(-level) |>
         mutate(start = tar_bp - 3, end = tar_bp + 3)
-      me_mat2 = me_mat |>
-        extract(CpG, c("chr", "bp"), '(chr.*)_(.*)', remove = T, convert = T) |>
-        mutate(start = bp, end = bp)
       fuzzy_joined = genome_left_join(missed_pos, me_mat2, by = c("chr", 'start', 'end'))
 
       mean_fuzzy = fuzzy_joined |>
         select(CpG, level) |> 
         group_by(CpG) |>
-        summarize(level = mean(level, na.rm = T)) |>
+        summarize(level = median(level, na.rm = T)) |>
         ungroup() 
     
       raw = raw[!is.na(raw$level),] |>
@@ -139,15 +133,12 @@ do_dnam_clock_mouse = function(
         extract(CpG, c("chr", "tar_bp"), '(chr.*)_(.*)', remove = F, convert = T) |>
         select(-level) |>
         mutate(start = tar_bp - fuzzy_pos_window, end = tar_bp + fuzzy_pos_window)
-      me_mat2 = me_mat |>
-        extract(CpG, c("chr", "bp"), '(chr.*)_(.*)', remove = T, convert = T) |>
-        mutate(start = bp, end = bp)
       fuzzy_joined = genome_left_join(missed_pos, me_mat2, by = c("chr", 'start', 'end'))
 
       mean_fuzzy = fuzzy_joined |>
         select(CpG, level) |> 
         group_by(CpG) |>
-        summarize(level = mean(level, na.rm = T)) |>
+        summarize(level = median(level, na.rm = T)) |>
         ungroup() 
     
       raw_mat = raw[!is.na(raw$level),] |>
@@ -181,7 +172,7 @@ do_dnam_clock_mouse = function(
         bage = (matrix(clock_coef, nrow = 1) %*% raw_mat/100) + clock_intercept.ls[[i]]
       } else if (clock_name == 'WangLiver') {
         bage = (matrix(clock_coef, nrow = 1) %*% raw_mat/100) + clock_intercept.ls[[i]]
-        bage = (2**(bage))/30.417
+        bage = (2**(bage))
       }
       res = data.frame(Age = bage[1,], missing = missingness)
       colnames(res) = c(clock_name, paste0(clock_name, "_missing"))
@@ -216,4 +207,6 @@ if (FALSE) {
   library(ClockBasis)
   library(tidyverse)
   do_dnam_clock_mouse(tibble(a = "chr1_1000", lel = 0.5, kkk = 1))
+  library(tidyverse)
+  do_dnam_clock_mouse(data, fuzzy_pos_window = 100)
 }
